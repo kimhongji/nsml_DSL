@@ -19,7 +19,19 @@ HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTIO
 CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
 OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
+'''
+4/7
+7. learning rate 0.01 로 수정 -> nan(checkpoint 73 까지)
+    epoch 150 수정
+    layer1개 더추가
+    
+8. learning rate 0.001로 수정 (현재 credit 2716)
+    => 큰변화 x
+    
+9. 300-200-1 로 레이어 수 변화 => loss 많이 낮아짐 nsml 기준 0.05
 
+12. 500-400-300 했을 때 => nan 수 
+'''
 
 import argparse
 import os
@@ -107,7 +119,7 @@ if __name__ == '__main__':
 
     # User options
     args.add_argument('--output', type=int, default=1)
-    args.add_argument('--epochs', type=int, default=100)
+    args.add_argument('--epochs', type=int, default=150)
     args.add_argument('--batch', type=int, default=2000)
     args.add_argument('--strmaxlen', type=int, default=400)
     args.add_argument('--embedding', type=int, default=8)
@@ -120,7 +132,9 @@ if __name__ == '__main__':
     # 모델의 specification
     input_size = config.embedding*config.strmaxlen
     output_size = 1
-    hidden_layer_size = 100
+    hidden_layer_size = 400
+    hidden_layer_size1 = 300
+    hidden_layer_size2 = 300
     learning_rate = 0.001
     character_size = 251
 
@@ -131,17 +145,23 @@ if __name__ == '__main__':
     embedded = tf.nn.embedding_lookup(char_embedding, x)
 
     # 첫 번째 레이어
-    first_layer_weight = weight_variable([input_size, hidden_layer_size])
-    first_layer_bias = bias_variable([hidden_layer_size])
-    hidden_layer = tf.matmul(tf.reshape(embedded, (-1, input_size)), first_layer_weight) + first_layer_bias
+    first_layer_weight0 = weight_variable([input_size, hidden_layer_size])
+    first_layer_bias0= bias_variable([hidden_layer_size])
+    hidden_layer0 = tf.matmul(tf.reshape(embedded, (-1, input_size)), first_layer_weight0) + first_layer_bias0
     
+    # 두 번째 레이어
+    first_layer_weight1 = weight_variable([hidden_layer_size, hidden_layer_size1])
+    first_layer_bias1 = bias_variable([hidden_layer_size1])
+    hidden_layer1 = tf.sigmoid(tf.matmul(hidden_layer0, first_layer_weight1) + first_layer_bias1)
     
-    first_layer_weight1 = weight_variable([hidden_layer_size, hidden_layer_size])
-    first_layer_bias1 = bias_variable([hidden_layer_size])
-    hidden_layer1 = tf.sigmoid(tf.matmul(hidden_layer, first_layer_weight1) + first_layer_bias1)
-
-    # 두 번째 (아웃풋) 레이어
-    second_layer_weight = weight_variable([hidden_layer_size, output_size])
+    '''
+    # 세 번째 레이어
+    first_layer_weight2 = weight_variable([hidden_layer_size1, hidden_layer_size2])
+    first_layer_bias2 = bias_variable([hidden_layer_size2])
+    hidden_layer2 = tf.sigmoid(tf.matmul(hidden_layer1, first_layer_weight2) + first_layer_bias2)
+'''
+    # 아웃 레이어
+    second_layer_weight = weight_variable([hidden_layer_size1, output_size])
     second_layer_bias = bias_variable([output_size])
     output = tf.matmul(hidden_layer1, second_layer_weight) + second_layer_bias
     output_sigmoid = tf.sigmoid(output)
@@ -184,7 +204,7 @@ if __name__ == '__main__':
                         train__loss=float(avg_loss/one_batch_size), step=epoch)
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
-           # tf.reset_default_graph()
+            #tf.reset_default_graph()
             '''
         with open(os.path.join(DATASET_PATH, 'train/test_data'), 'rt', encoding='utf-8') as f:
             queries = f.readlines()
