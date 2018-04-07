@@ -2,16 +2,13 @@
 
 """
 Copyright 2018 NAVER Corp.
-
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
 associated documentation files (the "Software"), to deal in the Software without restriction, including
 without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to
 the following conditions:
-
 The above copyright notice and this permission notice shall be included in all copies or substantial
 portions of the Software.
-
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
 PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
@@ -19,9 +16,6 @@ HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTIO
 CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
 OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
-'''
-2. layer 추가 에폭 20 으로 증가 => 큰차이 없음 
-'''
 
 import argparse
 import os
@@ -32,7 +26,6 @@ import torch
 from torch.autograd import Variable
 from torch import nn, optim
 from torch.utils.data import DataLoader
-import torch.nn.functional as F
 
 import nsml
 from dataset import MovieReviewDataset, preprocess
@@ -57,7 +50,6 @@ def bind_model(model, config):
 
     def infer(raw_data, **kwargs):
         """
-
         :param raw_data: raw input (여기서는 문자열)을 입력받습니다
         :param kwargs:
         :return:
@@ -81,7 +73,6 @@ def collate_fn(data: list):
     """
     PyTorch DataLoader에서 사용하는 collate_fn 입니다.
     기본 collate_fn가 리스트를 flatten하기 때문에 벡터 입력에 대해서 사용이 불가능해, 직접 작성합니다.
-
     :param data: 데이터 리스트
     :return:
     """
@@ -101,7 +92,6 @@ class Regression(nn.Module):
     def __init__(self, embedding_dim: int, max_length: int):
         """
         initializer
-
         :param embedding_dim: 데이터 임베딩의 크기입니다
         :param max_length: 인풋 벡터의 최대 길이입니다 (첫 번째 레이어의 노드 수에 연관)
         """
@@ -110,21 +100,17 @@ class Regression(nn.Module):
         self.character_size = 251
         self.output_dim = 1  # Regression
         self.max_length = max_length
-        
 
         # 임베딩
         self.embeddings = nn.Embedding(self.character_size, self.embedding_dim)
 
-        self.conv1 = nn.conv2d(1,32,5, padding=2)
-        self.conv2 = nn.conv2d(32,64,5, padding=2)
         # 첫 번째 레이어
-        self.fc1 = nn.Linear(64*self.max_length * self.embedding_dim, 200)
+        self.fc1 = nn.Linear(self.max_length * self.embedding_dim, 200)
         # 두 번째 (아웃풋) 레이어
         self.fc2 = nn.Linear(200, 1)
 
     def forward(self, data: list):
         """
-
         :param data: 실제 입력값
         :return:
         """
@@ -137,17 +123,9 @@ class Regression(nn.Module):
             data_in_torch = data_in_torch.cuda()
         # 뉴럴네트워크를 지나 결과를 출력합니다.
         embeds = self.embeddings(data_in_torch)
-        
-        embeds = F.max_pool2d(F.relu(self.conv1(data)),2)
-        embeds = F.max_pool2d(F.relu(self.conv2(data)),2)
-        embeds = embeds.view(-1,64*self.max_length * self.embedding_dim)
-        embeds = F.relu(self.fc1(embeds))
-        embeds = F.dropout(embeds,training=self.training)
-        embeds = self.fc2(embeds)
-        #hidden = self.fc1(embeds.view(batch_size, -1))
-               # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
-        output = torch.sigmoid(self.fc2(embeds)) * 9 + 1
-        
+        hidden = self.fc1(embeds.view(batch_size, -1))
+        # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
+        output = torch.sigmoid(self.fc2(hidden)) * 9 + 1
         return output
 
 
@@ -160,7 +138,7 @@ if __name__ == '__main__':
 
     # User options
     args.add_argument('--output', type=int, default=1)
-    args.add_argument('--epochs', type=int, default=20)
+    args.add_argument('--epochs', type=int, default=10)
     args.add_argument('--batch', type=int, default=2000)
     args.add_argument('--strmaxlen', type=int, default=200)
     args.add_argument('--embedding', type=int, default=8)
@@ -219,7 +197,6 @@ if __name__ == '__main__':
                         train__loss=float(avg_loss/total_batch), step=epoch)
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
-            
 
     # 로컬 테스트 모드일때 사용합니다
     # 결과가 아래와 같이 나온다면, nsml submit을 통해서 제출할 수 있습니다.
@@ -229,3 +206,4 @@ if __name__ == '__main__':
             reviews = f.readlines()
         res = nsml.infer(reviews)
         print(res)
+        
