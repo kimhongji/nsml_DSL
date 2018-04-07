@@ -22,7 +22,7 @@ import os
 
 import numpy as np
 import torch
-
+import torch.nn.functional as F
 from torch.autograd import Variable
 from torch import nn, optim
 from torch.utils.data import DataLoader
@@ -102,10 +102,12 @@ class Regression(nn.Module):
         self.max_length = max_length
 
         # 임베딩
-        self.embeddings = nn.Embedding(self.character_size, self.embedding_dim)
-
+        self.embeddings = nn.Embedding(251, self.embedding_dim)
+        self.conv1 = nn.Conv2d(1,251+4,kernel_size=5, padding=2)
+        #4d error 남 0407
+        self.conv2 = nn.Conv2d(251+4,2*(251+4),kernel_size=5, padding=2)
         # 첫 번째 레이어
-        self.fc1 = nn.Linear(self.max_length * self.embedding_dim, 200)
+        self.fc1 = nn.Linear(2*(251+4)*self.max_length * self.embedding_dim, 200)
         # 두 번째 (아웃풋) 레이어
         self.fc2 = nn.Linear(200, 1)
 
@@ -123,9 +125,15 @@ class Regression(nn.Module):
             data_in_torch = data_in_torch.cuda()
         # 뉴럴네트워크를 지나 결과를 출력합니다.
         embeds = self.embeddings(data_in_torch)
-        hidden = self.fc1(embeds.view(batch_size, -1))
+        data_in_torch = F.max_pool2d(F.relu(self.conv1(embeds.view(batch_size, -1))), (2,2))
+        data_in_torch = F.max_pool2d(F.relu(self.conv2(data_in_torch)), 2)
+        data_in_torch = data_in_torch.view(-1, 2*(251+4)*self.max_length * self.embedding_dim)
+        data_in_torch = F.relu(self.fc1(data_in_torch))
+        data_in_torch = F.dropout(data_in_torch, training=self.training)
+        #data_in_torch = self.fc2(data_in_torch)
+        data_in_torch = self.fc1(data_in_torch)
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
-        output = torch.sigmoid(self.fc2(hidden)) * 9 + 1
+        output = torch.sigmoid(self.fc2(data_in_torch)) * 9 + 1
         return output
 
 
@@ -206,4 +214,3 @@ if __name__ == '__main__':
             reviews = f.readlines()
         res = nsml.infer(reviews)
         print(res)
-        
