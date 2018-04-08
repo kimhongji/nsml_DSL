@@ -111,13 +111,13 @@ class CNN(nn.Module):
                 nn.MaxPool2d(2)
                 )
         self.layer2  = nn.Sequential(
-                nn.Conv2d(251+4, 2*(251+4),kernel_size=5, padding=2),
-                nn.BatchNorm2d(2*(251+4)),
+                nn.Conv2d(251+4, (251+4),kernel_size=5, padding=2),
+                nn.BatchNorm2d((251+4)),
                 nn.ReLU(),
                 nn.MaxPool2d(2)
                 )
         # 첫 번째 레이어
-        self.fc1 = nn.Linear(2*(251+4)*self.max_length*self.embedding_dim, 200)
+        self.fc1 = nn.Linear((251+4)*self.max_length*self.embedding_dim, 200)
         # 두 번째 (아웃풋) 레이어
         self.fc2 = nn.Linear(200, 1)
 
@@ -136,13 +136,14 @@ class CNN(nn.Module):
             data_in_torch = data_in_torch.cuda()
         # 뉴럴네트워크를 지나 결과를 출력합니다.
         embeds = self.embeddings(data_in_torch)
+        embeds = embeds.view(-1,1,8,batch_size)
         
         embeds = self.layer1(embeds)
         embeds = self.layer2(embeds)
         
-        embeds = embeds.view(embeds.size9(batch_size),-1)
+        #embeds = embeds.view(-1, batch_size)
         
-        embeds = self.fc1(embeds)
+        embeds = self.fc1(embeds.view(batch_size,-1))
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
         output = torch.sigmoid(self.fc2(embeds)) * 9 + 1
         return output
