@@ -85,24 +85,25 @@ def collate_fn(data: list):
     return review, np.array(label)
 
 
-class Regression(nn.Module):
+class CNN(nn.Module):
     """
-    영화리뷰 예측을 위한 Regression 모델입니다.
+    영화리뷰 예측을 위한 CNN 모델입니다.
     """
     def __init__(self, embedding_dim: int, max_length: int):
         """
         initializer
+
         :param embedding_dim: 데이터 임베딩의 크기입니다
         :param max_length: 인풋 벡터의 최대 길이입니다 (첫 번째 레이어의 노드 수에 연관)
         """
-        super(Regression, self).__init__()
+        super(CNN, self).__init__()
         self.embedding_dim = embedding_dim
         self.character_size = 251
         self.output_dim = 1  # Regression
         self.max_length = max_length
 
         # 임베딩
-        self.embeddings = nn.Embedding(251, self.embedding_dim)
+        self.embeddings = nn.Embedding(self.character_size, self.embedding_dim)
         self.layer1  = nn.Sequential(
                 nn.Conv2d(1,251+4,kernel_size=5, padding=2),
                 nn.BatchNorm2d(251+4),
@@ -115,13 +116,14 @@ class Regression(nn.Module):
                 nn.ReLU(),
                 nn.MaxPool2d(2)
                 )
-     
+        # 첫 번째 레이어
         self.fc1 = nn.Linear(2*(251+4)*self.max_length*self.embedding_dim, 200)
         # 두 번째 (아웃풋) 레이어
         self.fc2 = nn.Linear(200, 1)
 
     def forward(self, data: list):
         """
+
         :param data: 실제 입력값
         :return:
         """
@@ -134,14 +136,15 @@ class Regression(nn.Module):
             data_in_torch = data_in_torch.cuda()
         # 뉴럴네트워크를 지나 결과를 출력합니다.
         embeds = self.embeddings(data_in_torch)
-    
-        hidden = self.layer1(embeds)
-        hidden = self.layer2(hidden, -1)
-        hidden = hidden.view(hidden.size(batch_size),-1)
-        hidden = self.fc1(hidden)
         
+        embeds = self.layer1(embeds)
+        embeds = self.layer2(embeds)
+        
+        embeds = embeds.view(embeds.size9(batch_size),-1)
+        
+        embeds = self.fc1(embeds)
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
-        output = torch.sigmoid(self.fc2(hidden)) * 9 + 1
+        output = torch.sigmoid(self.fc2(embeds)) * 9 + 1
         return output
 
 
@@ -163,7 +166,7 @@ if __name__ == '__main__':
     if not HAS_DATASET and not IS_ON_NSML:  # It is not running on nsml
         DATASET_PATH = '../sample_data/movie_review/'
 
-    model = Regression(config.embedding, config.strmaxlen)
+    model = CNN(config.embedding, config.strmaxlen)
     if GPU_NUM:
         model = model.cuda()
 
