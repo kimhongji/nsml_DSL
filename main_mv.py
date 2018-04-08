@@ -103,11 +103,20 @@ class Regression(nn.Module):
 
         # 임베딩
         self.embeddings = nn.Embedding(251, self.embedding_dim)
-        self.conv1 = nn.Conv2d(1,251+4,kernel_size=5, padding=2)
-        #4d error 남 0407
-        self.conv2 = nn.Conv2d(251+4,2*(251+4),kernel_size=5, padding=2)
-        # 첫 번째 레이어
-        self.fc1 = nn.Linear(2*(251+4)*self.max_length * self.embedding_dim, 200)
+        self.layer1  = nn.Sequential(
+                nn.Conv2d(1,251+4,kernel_size=5, padding=2),
+                nn.BatchNorm2d(251+4),
+                nn.ReLU(),
+                nn.MaxPool2d(2)
+                )
+        self.layer2  = nn.Sequential(
+                nn.Conv2d(251+4, 2*(251+4),kernel_size=5, padding=2),
+                nn.BatchNorm2d(2*(251+4)),
+                nn.ReLU(),
+                nn.MaxPool2d(2)
+                )
+     
+        self.fc1 = nn.Linear(2*(251+4)*self.max_length*self.embedding_dim, 200)
         # 두 번째 (아웃풋) 레이어
         self.fc2 = nn.Linear(200, 1)
 
@@ -125,15 +134,14 @@ class Regression(nn.Module):
             data_in_torch = data_in_torch.cuda()
         # 뉴럴네트워크를 지나 결과를 출력합니다.
         embeds = self.embeddings(data_in_torch)
-        data_in_torch = F.max_pool2d(F.relu(self.conv1(embeds.view(batch_size, -1))), (2,2))
-        data_in_torch = F.max_pool2d(F.relu(self.conv2(data_in_torch)), 2)
-        data_in_torch = data_in_torch.view(-1, 2*(251+4)*self.max_length * self.embedding_dim)
-        data_in_torch = F.relu(self.fc1(data_in_torch))
-        data_in_torch = F.dropout(data_in_torch, training=self.training)
-        #data_in_torch = self.fc2(data_in_torch)
-        data_in_torch = self.fc1(data_in_torch)
+    
+        hidden = self.layer1(embeds)
+        hidden = self.layer2(hidden, -1)
+        hidden = hidden.view(hidden.size(batch_size),-1)
+        hidden = self.fc1(hidden)
+        
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
-        output = torch.sigmoid(self.fc2(data_in_torch)) * 9 + 1
+        output = torch.sigmoid(self.fc2(hidden)) * 9 + 1
         return output
 
 
@@ -205,6 +213,7 @@ if __name__ == '__main__':
                         train__loss=float(avg_loss/total_batch), step=epoch)
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
+            
 
     # 로컬 테스트 모드일때 사용합니다
     # 결과가 아래와 같이 나온다면, nsml submit을 통해서 제출할 수 있습니다.
