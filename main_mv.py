@@ -60,39 +60,27 @@ def bind_model(sess, config):
         # dataset.py에서 작성한 preprocess 함수를 호출하여, 문자열을 벡터로 변환합니다
         #preprocessed_data= tf.placeholder(tf.float32, [None, config.strmaxlen])
         preprocessed_data = preprocess(raw_data, config.strmaxlen)
-        print(preprocessed_data)
+
+       
         #preprocessed_data = np.reshape(preprocessed_data, (-1,15,15,1))
         # 저장한 모델에 입력값을 넣고 prediction 결과를 리턴받습니다
         pred1 = []
         for i in range(len(preprocessed_data)):
-            #labels = np.reshape(labels,(-1,1))
-            pred = sess.run(logits, feed_dict={x: preprocessed_data[i,:,]})
-            pred1.expend(pred)
-        clipped = np.array(pred > config.threshold, dtype=np.int)
+            #labels = np.reshape(labels,(-1,1)
+            re_preprocessed_data = np.reshape(preprocessed_data[i,:,],(-1,225))
+            pred = sess.run(logits, feed_dict={x: re_preprocessed_data, keep_prob: 1})
+            pred1.extend(pred)
+        
+        point = np.array(pred1)
+        point = np.squeeze(point)
+        #point = point.data.squeeze(dim=1).tolist()
         # DONOTCHANGE: They are reserved for nsml
-        # 리턴 결과는 [(확률, 0 or 1)] 의 형태로 보내야만 리더보드에 올릴 수 있습니다. 리더보드 결과에 확률의 값은 영향을 미치지 않습니다
-        return list(zip(pred.flatten(), clipped.flatten()))
+        # 리턴 결과는 [(confidence interval, 포인트)] 의 형태로 보내야만 리더보드에 올릴 수 있습니다. 리더보드 결과에 confidence interval의 값은 영향을 미치지 않습니다
+        return list(zip(np.zeros(len(point)), point))
 
     # DONOTCHANGE: They are reserved for nsml
     # nsml에서 지정한 함수에 접근할 수 있도록 하는 함수입니다.
     nsml.bind(save=save, load=load, infer=infer)
-
-
-def collate_fn(data: list):
-    """
-    PyTorch DataLoader에서 사용하는 collate_fn 입니다.
-    기본 collate_fn가 리스트를 flatten하기 때문에 벡터 입력에 대해서 사용이 불가능해, 직접 작성합니다.
-    :param data: 데이터 리스트
-    :return:
-    """
-    review = []
-    label = []
-    for datum in data:
-        review.append(datum[0])
-        label.append(datum[1])
-    # 각각 데이터, 레이블을 리턴
-    return review, np.array(label)
-
 
 def _batch_loader(iterable, n=1):
     """
@@ -128,6 +116,7 @@ if __name__ == '__main__':
     args.add_argument('--batch', type=int, default=2000)
     args.add_argument('--strmaxlen', type=int, default=225)
     args.add_argument('--embedding', type=int, default=7)
+
     config = args.parse_args()
     
   
@@ -137,14 +126,14 @@ if __name__ == '__main__':
    
     input_size = config.embedding*config.strmaxlen
     output_size = 1
-    hidden_layer_size = 200
+    hidden_layer_size = 300
     hidden_layer_size1 = 300
-    learning_rate = 0.01
+    learning_rate = 0.001
     character_size = 251
     # dropout (keep_prob) rate  0.7~0.5 on training, but should be 1 for testing
     keep_prob = tf.placeholder(tf.float32)
     
-    x = tf.placeholder(tf.float32, [None, config.strmaxlen])
+    x = tf.placeholder(tf.float32, [None, config.strmaxlen])    #107 * 225
     x_img = tf.reshape(x, [-1,15,15,1])
     x_img = tf.cast(x_img, tf.float32)
     y_ = tf.placeholder(tf.float32, [None, output_size])
@@ -185,6 +174,7 @@ if __name__ == '__main__':
     L2 = tf.nn.dropout(L2, keep_prob=keep_prob)
     L2_flat = tf.reshape(L2, [-1, 64 * 4 * 4])
     
+    # L4 FC 64 * 4 * 4 inputs -> 625 outputs
     W4 = tf.get_variable("W4", shape=[64 * 4 * 4, 625],
                      initializer=tf.contrib.layers.xavier_initializer())
     b4 = tf.Variable(tf.random_normal([625]))
@@ -246,6 +236,13 @@ if __name__ == '__main__':
                         train__loss=float(avg_loss/one_batch_size), step=epoch)
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
+        '''
+        with open(os.path.join(DATASET_PATH, 'train/train_data'), 'rt', encoding='utf-8') as f:
+            reviews = f.readlines()
+        res = nsml.infer(reviews)
+        print(res)
+        tf.reset_default_graph()
+       '''
     # 로컬 테스트 모드일때 사용합니다
     # 결과가 아래와 같이 나온다면, nsml submit을 통해서 제출할 수 있습니다.
     # [(0.0, 9.045), (0.0, 5.91), ... ]
@@ -253,6 +250,6 @@ if __name__ == '__main__':
         with open(os.path.join(DATASET_PATH, 'train/train_data'), 'rt', encoding='utf-8') as f:
             reviews = f.readlines()
         res = nsml.infer(reviews)
-        print(res)
+        
 
         
