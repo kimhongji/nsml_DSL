@@ -127,7 +127,7 @@ if __name__ == '__main__':
     config = args.parse_args()
 
     if not HAS_DATASET and not IS_ON_NSML:  # It is not running on nsml
-        DATASET_PATH = '../sample_data/kin/'
+        DATASET_PATH = '../sample_data/movie_review/'
 
     # 모델의 specification
     input_size = config.embedding*config.strmaxlen
