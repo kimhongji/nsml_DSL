@@ -133,24 +133,24 @@ if __name__ == '__main__':
     # dropout (keep_prob) rate  0.7~0.5 on training, but should be 1 for testing
     keep_prob = tf.placeholder(tf.float32)
     
-    x = tf.placeholder(tf.float32, [None, config.strmaxlen])    #107 * 225
+    x = tf.placeholder(tf.int32, [None, config.strmaxlen])    #107 * 225
     x_img = tf.reshape(x, [-1,15,15,1])
-    x_img = tf.cast(x_img, tf.float32)
+    x_img = tf.cast(x_img, tf.int32)
     y_ = tf.placeholder(tf.float32, [None, output_size])
     # 임베딩
-    '''
+    
     char_embedding = tf.get_variable('char_embedding', [character_size, config.embedding])
     embedded = tf.nn.embedding_lookup(char_embedding, x_img)
     
     print("============================")
-    print(embedded)
-    print("============================")
-    '''
+
     # 첫 번째 레이어
     #32: 임의
     W1 = tf.Variable(tf.random_normal([2, 2, 1, 32], stddev=0.01))
     #    Conv     -> (?, 28, 28, 32) 
     #    Pool     -> (?, 14, 14, 32)
+    
+    x_img = tf.cast(x_img, tf.float32)
     L1 = tf.nn.conv2d(x_img, W1, strides=[1, 1, 1, 1], padding='SAME')
     L1 = tf.nn.relu(L1)
     L1 = tf.nn.max_pool(L1, ksize=[1, 2, 2, 1],
@@ -242,7 +242,8 @@ if __name__ == '__main__':
         res = nsml.infer(reviews)
         print(res)
         tf.reset_default_graph()
-       '''
+        '''
+       
     # 로컬 테스트 모드일때 사용합니다
     # 결과가 아래와 같이 나온다면, nsml submit을 통해서 제출할 수 있습니다.
     # [(0.0, 9.045), (0.0, 5.91), ... ]
