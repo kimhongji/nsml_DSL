@@ -236,13 +236,13 @@ if __name__ == '__main__':
                         train__loss=float(avg_loss/one_batch_size), step=epoch)
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
-        '''
+        
         with open(os.path.join(DATASET_PATH, 'train/train_data'), 'rt', encoding='utf-8') as f:
             reviews = f.readlines()
         res = nsml.infer(reviews)
         print(res)
         tf.reset_default_graph()
-        '''
+        
        
     # 로컬 테스트 모드일때 사용합니다
     # 결과가 아래와 같이 나온다면, nsml submit을 통해서 제출할 수 있습니다.

@@ -20,17 +20,8 @@ CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFT
 OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 '''
-4/7
-7. learning rate 0.01 로 수정 -> nan(checkpoint 73 까지)
-    epoch 150 수정
-    layer1개 더추가
-    
-8. learning rate 0.001로 수정 (현재 credit 2716)
-    => 큰변화 x
-    
-9. 300-200-1 로 레이어 수 변화 => loss 많이 낮아짐 nsml 기준 0.05
+4/10
 
-12. 500-400-300 했을 때 => nan 수 
 '''
 
 import argparse
@@ -119,7 +110,7 @@ if __name__ == '__main__':
 
     # User options
     args.add_argument('--output', type=int, default=1)
-    args.add_argument('--epochs', type=int, default=150)
+    args.add_argument('--epochs', type=int, default=200)
     args.add_argument('--batch', type=int, default=2000)
     args.add_argument('--strmaxlen', type=int, default=400)
     args.add_argument('--embedding', type=int, default=8)
@@ -127,39 +118,35 @@ if __name__ == '__main__':
     config = args.parse_args()
 
     if not HAS_DATASET and not IS_ON_NSML:  # It is not running on nsml
-        DATASET_PATH = '../sample_data/movie_review/'
+        DATASET_PATH = '../sample_data/kin/'
 
     # 모델의 specification
     input_size = config.embedding*config.strmaxlen
     output_size = 1
-    hidden_layer_size = 400
-    hidden_layer_size1 = 300
-    hidden_layer_size2 = 300
+    hidden_layer_size = 500
+    hidden_layer_size1 = 500
     learning_rate = 0.001
     character_size = 251
 
     x = tf.placeholder(tf.int32, [None, config.strmaxlen])
     y_ = tf.placeholder(tf.float32, [None, output_size])
+    
     # 임베딩
     char_embedding = tf.get_variable('char_embedding', [character_size, config.embedding])
     embedded = tf.nn.embedding_lookup(char_embedding, x)
+    print("============================")
+    print(embedded)
 
     # 첫 번째 레이어
     first_layer_weight0 = weight_variable([input_size, hidden_layer_size])
     first_layer_bias0= bias_variable([hidden_layer_size])
     hidden_layer0 = tf.matmul(tf.reshape(embedded, (-1, input_size)), first_layer_weight0) + first_layer_bias0
-    
+    #hidden_layer0 = tf.nn.dropout(hidden_layer0,0.8)
     # 두 번째 레이어
     first_layer_weight1 = weight_variable([hidden_layer_size, hidden_layer_size1])
     first_layer_bias1 = bias_variable([hidden_layer_size1])
     hidden_layer1 = tf.sigmoid(tf.matmul(hidden_layer0, first_layer_weight1) + first_layer_bias1)
-    
-    '''
-    # 세 번째 레이어
-    first_layer_weight2 = weight_variable([hidden_layer_size1, hidden_layer_size2])
-    first_layer_bias2 = bias_variable([hidden_layer_size2])
-    hidden_layer2 = tf.sigmoid(tf.matmul(hidden_layer1, first_layer_weight2) + first_layer_bias2)
-'''
+    #hidden_layer1 = tf.nn.dropout(hidden_layer1,0.8)
     # 아웃 레이어
     second_layer_weight = weight_variable([hidden_layer_size1, output_size])
     second_layer_bias = bias_variable([output_size])
@@ -204,17 +191,9 @@ if __name__ == '__main__':
                         train__loss=float(avg_loss/one_batch_size), step=epoch)
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
-            #tf.reset_default_graph()
-            '''
-        with open(os.path.join(DATASET_PATH, 'train/test_data'), 'rt', encoding='utf-8') as f:
-            queries = f.readlines()
-        res = []
-        for batch in _batch_loader(queries, config.batch):
-            temp_res = nsml.infer(batch)
-            res += temp_res
-        print(res)
-        
-        '''
+            
+            tf.reset_default_graph()
+
 
     # 로컬 테스트 모드일때 사용합니다
     # 결과가 아래와 같이 나온다면, nsml submit을 통해서 제출할 수 있습니다.
