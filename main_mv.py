@@ -28,6 +28,8 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 42.y_ 625 = 6.23
 43.cnn W3 추가 = 6.333
 44.keep_prob = 0.7 + y_300 = (train)7.298
+52.epoch60,batch1000,embedd8,max_pool(stride 1,1,1,1) = 6.43
+60.softmax,추가 = train 0.9 근데 리더보드엔 안올라감 왜? 
 '''
 import argparse
 import os
@@ -75,18 +77,20 @@ def bind_model(sess, config):
         """
         # dataset.py에서 작성한 preprocess 함수를 호출하여, 문자열을 벡터로 변환합니다
         preprocessed_data = preprocess(raw_data, config.strmaxlen)
+        re_preprocessed_data = np.reshape(preprocessed_data,(-1,225))
         # 저장한 모델에 입력값을 넣고 prediction 결과를 리턴받습니다
         pred1 = []
         for i in range(len(preprocessed_data)):
-            re_preprocessed_data = np.reshape(preprocessed_data[i,:,],(-1,225))
-            pred = sess.run(logits, feed_dict={x: re_preprocessed_data, keep_prob: 1})
+            #re_preprocessed_data = np.reshape(preprocessed_data[i,:,],(-1,225))
+            pred = sess.run(logits, feed_dict={x: re_preprocessed_data[i:i+1], keep_prob: 1})
             pred1.extend(pred)
         
         point = np.array(pred1)
         point = np.squeeze(point)
+        point_arg = np.argmax(point, 1)
         # DONOTCHANGE: They are reserved for nsml
         # 리턴 결과는 [(confidence interval, 포인트)] 의 형태로 보내야만 리더보드에 올릴 수 있습니다. 리더보드 결과에 confidence interval의 값은 영향을 미치지 않습니다
-        return list(zip(np.zeros(len(point)), point))
+        return list(zip(np.zeros(len(point)), point_arg+1))
 
     # DONOTCHANGE: They are reserved for nsml
     # nsml에서 지정한 함수에 접근할 수 있도록 하는 함수입니다.
@@ -123,9 +127,9 @@ if __name__ == '__main__':
     # User options
     args.add_argument('--output', type=int, default=1)
     args.add_argument('--epochs', type=int, default=20)
-    args.add_argument('--batch', type=int, default=2000)
+    args.add_argument('--batch', type=int, default=1000)
     args.add_argument('--strmaxlen', type=int, default=225) #한문장의 길이
-    args.add_argument('--embedding', type=int, default=10)
+    args.add_argument('--embedding', type=int, default=8)
     args.add_argument('--img_input', type=int, default=15)  #x_img 의 input변수(한문장의길이의 루트)
 
     config = args.parse_args()
@@ -141,14 +145,20 @@ if __name__ == '__main__':
     output_layer = 625
     learning_rate = 0.001
     character_size = 251
-    
+    nb_classes = 10 #1~10
     # dropout (keep_prob) rate  0.7~0.5 on training, but should be 1 for testing
     keep_prob = tf.placeholder(tf.float32)
     
     x = tf.placeholder(tf.int32, [None, config.strmaxlen])    #107 * 225
     x_img = tf.reshape(x, [-1,config.img_input,config.img_input])
     x_img = tf.cast(x_img, tf.int32)
-    y_ = tf.placeholder(tf.float32, [None, output_size])
+    
+    y_ = tf.placeholder(tf.int32, [None, output_size])
+    Y_one_hot = tf.one_hot(y_, nb_classes)  # one hot
+    #print("one_hot", Y_one_hot)
+    Y_one_hot = tf.reshape(Y_one_hot, [-1, nb_classes])
+    #print("reshape", Y_one_hot)
+    Y_one_hot = tf.cast(Y_one_hot, tf.float32)
     # 임베딩
     
     char_embedding = tf.get_variable('char_embedding', [character_size, config.embedding])
@@ -194,17 +204,19 @@ if __name__ == '__main__':
     Tensor("dropout_3/mul:0", shape=(?, 625), dtype=float32)
     '''
     # L5 Final FC 625 inputs -> 10 outputs
-    W5 = tf.get_variable("W5", shape=[output_layer, 1],
+    W5 = tf.get_variable("W5", shape=[output_layer, nb_classes],
                      initializer=tf.contrib.layers.xavier_initializer())
-    b5 = tf.Variable(tf.random_normal([1]))
+    b5 = tf.Variable(tf.random_normal([nb_classes]))
     logits = tf.matmul(L4, W5) + b5
-    # loss와 optimizer
-    binary_cross_entropy = tf.reduce_mean(tf.square(logits - y_))
-    train_step = tf.train.AdamOptimizer(learning_rate).minimize(binary_cross_entropy)
+    logits = tf.nn.softmax(logits)
+    #logits = tf.nn.softmax(tf.matmul(L4, W5)+b5)
+
     
     # loss와 optimizer
-    cost = tf.reduce_mean(tf.square(logits - y_))
+    cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+    logits=logits, labels=Y_one_hot))
     train_step = tf.train.AdamOptimizer(learning_rate).minimize(cost)
+
 
     sess = tf.InteractiveSession()
     tf.global_variables_initializer().run()
@@ -232,14 +244,21 @@ if __name__ == '__main__':
                 feed_dict={x: data, y_: labels, keep_prob:0.7}
                 _, loss = sess.run([train_step, cost], feed_dict=feed_dict)
                 print('Batch : ', i + 1, '/', one_batch_size,
-                      ', BCE in this minibatch: ', float(loss))
-                avg_loss += float(loss)
-            print('epoch:', epoch, ' train_loss:', float(avg_loss/one_batch_size))
+                      ', BCE in this minibatch: ', loss.astype(float))
+                avg_loss += loss.astype(float)
+            print('epoch:', epoch, ' train_loss:', (avg_loss/one_batch_size).astype(float))
             nsml.report(summary=True, scope=locals(), epoch=epoch, epoch_total=config.epochs,
-                        train__loss=float(avg_loss/one_batch_size), step=epoch)
+                        train__loss=(avg_loss/one_batch_size).astype(float), step=epoch)
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
-            tf.reset_default_graph()
+            
+        '''
+        with open(os.path.join(DATASET_PATH, 'train/train_data'), 'rt', encoding='utf-8') as f:
+            reviews = f.readlines()
+        res = nsml.infer(reviews)
+        print(res)
+        tf.reset_default_graph()
+        '''
     
        
     # 로컬 테스트 모드일때 사용합니다
@@ -249,6 +268,7 @@ if __name__ == '__main__':
         with open(os.path.join(DATASET_PATH, 'train/train_data'), 'rt', encoding='utf-8') as f:
             reviews = f.readlines()
         res = nsml.infer(reviews)
+        print(res)
         
 
         
