@@ -17,7 +17,11 @@ CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFT
 OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 '''
-4/10
+4/14
+las: 0.0006
+Minmax : 적당하지 않음 
+4. epoch:250,batch:100 = 0.4(nan error)
+5. epoch:200,batch:1000 = 
 '''
 
 import argparse
@@ -30,7 +34,23 @@ import nsml
 from nsml import DATASET_PATH, HAS_DATASET, IS_ON_NSML
 from dataset import KinQueryDataset, preprocess
 
+def MinMaxScaler(data):
+    numerator = data - np.min(data, 0)
+    denominator = np.max(data, 0) - np.min(data, 0)
+    return numerator / (denominator + 1e-7)
 
+def feature_normalization(data):
+    # parameter 
+    feature_num = data.shape[1]
+    data_point = data.shape[0]
+    # you should get this parameter correctly
+    nomal_feature = np.zeros([data_point,feature_num])
+    ## your code here
+    mu=np.mean(data,0)
+    std=np.std(data,0)
+    nomal_feature=(data-mu)/std
+    ## end
+    return nomal_feature
 # DONOTCHANGE: They are reserved for nsml
 # This is for nsml leaderboard
 def bind_model(sess, config):
@@ -61,6 +81,8 @@ def bind_model(sess, config):
         """
         # dataset.py에서 작성한 preprocess 함수를 호출하여, 문자열을 벡터로 변환합니다
         preprocessed_data = preprocess(raw_data, config.strmaxlen)
+        #preprocessed_data = feature_normalization(preprocessed_data)
+        #preprocessed_data = MinMaxScaler(preprocessed_data)* 10
         # 저장한 모델에 입력값을 넣고 prediction 결과를 리턴받습니다
         pred = sess.run(output_sigmoid, feed_dict={x: preprocessed_data})
         clipped = np.array(pred > config.threshold, dtype=np.int)
@@ -105,7 +127,7 @@ if __name__ == '__main__':
     # User options
     args.add_argument('--output', type=int, default=1)
     args.add_argument('--epochs', type=int, default=200)
-    args.add_argument('--batch', type=int, default=2000)
+    args.add_argument('--batch', type=int, default=1000)
     args.add_argument('--strmaxlen', type=int, default=400)
     args.add_argument('--embedding', type=int, default=8)
     args.add_argument('--threshold', type=float, default=0.5)
@@ -139,8 +161,8 @@ if __name__ == '__main__':
     # 두 번째 레이어
     first_layer_weight1 = weight_variable([hidden_layer_size, hidden_layer_size1])
     first_layer_bias1 = bias_variable([hidden_layer_size1])
-    hidden_layer1 = tf.sigmoid(tf.matmul(hidden_layer0, first_layer_weight1) + first_layer_bias1)
-    #hidden_layer1 = tf.nn.dropout(hidden_layer1,0.8)
+    hidden_layer1 = tf.matmul(hidden_layer0, first_layer_weight1) + first_layer_bias1
+    hidden_layer1 = tf.sigmoid(hidden_layer1)
     # 아웃 레이어
     second_layer_weight = weight_variable([hidden_layer_size1, output_size])
     second_layer_bias = bias_variable([output_size])
@@ -172,10 +194,9 @@ if __name__ == '__main__':
         for epoch in range(config.epochs):
             avg_loss = 0.0
             for i, (data, labels) in enumerate(_batch_loader(dataset, config.batch)):
+                #data = feature_normalization(data)
+                #data = MinMaxScaler(data) * 10
                 _, loss = sess.run([train_step, binary_cross_entropy],
-                                   
-                                   
-                                     
                                    feed_dict={x: data, y_: labels})
                 print('Batch : ', i + 1, '/', one_batch_size,
                       ', BCE in this minibatch: ', float(loss))
@@ -185,7 +206,7 @@ if __name__ == '__main__':
                         train__loss=float(avg_loss/one_batch_size), step=epoch)
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
-            tf.reset_default_graph()
+            #tf.reset_default_graph()
 
 
     # 로컬 테스트 모드일때 사용합니다
