@@ -18,9 +18,14 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 '''
 4/12
-:cnn 으로 실행, embedding 넣고 10 으로 수정 하고 
+22. cnn 으로 실행, embedding 넣고 10 으로 수정 하고 
 
-: minmax 값이 그렇게 잘나오지 않음 
+31.minmax + embedding 10 = 8.252
+32.minmax + embedding 10 + epoch20 = 7.675
+35.embedding 10 + epoch20 = 6.976
+38.35+keep_prob=0.9+y_1625 = 6.488
+39.38동일 -12.xx
+
 '''
 import argparse
 import os
@@ -69,7 +74,7 @@ def bind_model(sess, config):
         # dataset.py에서 작성한 preprocess 함수를 호출하여, 문자열을 벡터로 변환합니다
         #preprocessed_data= tf.placeholder(tf.float32, [None, config.strmaxlen])
         preprocessed_data = preprocess(raw_data, config.strmaxlen)
-        preprocessed_data = MinMaxScaler(preprocessed_data)*100
+        #preprocessed_data = MinMaxScaler(preprocessed_data)*100
         #preprocessed_data = np.reshape(preprocessed_data, (-1,15,15,1))
         # 저장한 모델에 입력값을 넣고 prediction 결과를 리턴받습니다
         pred1 = []
@@ -120,24 +125,17 @@ if __name__ == '__main__':
 
     # User options
     args.add_argument('--output', type=int, default=1)
-    args.add_argument('--epochs', type=int, default=9)
+    args.add_argument('--epochs', type=int, default=20)
     args.add_argument('--batch', type=int, default=2000)
     args.add_argument('--strmaxlen', type=int, default=225)
-    args.add_argument('--embedding', type=int, default=8)
+    args.add_argument('--embedding', type=int, default=10)
 
     config = args.parse_args()
     
   
     if not HAS_DATASET and not IS_ON_NSML:  # It is not running on nsml
         DATASET_PATH = '../sample_data/movie_review/'
-    '''
-    dataset = MovieReviewDataset(DATASET_PATH, config.strmaxlen)
-    data =_batch_loader(dataset, config.batch)
-    for i, (data, labels) in enumerate(_batch_loader(dataset, config.batch)):
-        print(' ')
-    data = MinMaxScaler(data)
-    '''
-    
+
    # 모델의 specification
    
     input_size = config.embedding*config.strmaxlen
@@ -157,70 +155,44 @@ if __name__ == '__main__':
     
     char_embedding = tf.get_variable('char_embedding', [character_size, config.embedding])
     embedded = tf.nn.embedding_lookup(char_embedding, x_img)
-    
+    embedded_img=tf.reshape(embedded,[-1,15,15,config.embedding])
+
     print("============================")
 
-    # 첫 번째 레이어
+   # 첫 번째 레이어
     #32: 임의
     W1 = tf.Variable(tf.random_normal([2, 2, config.embedding, 32], stddev=0.01))
     #    Conv     -> (?, 28, 28, 32) 
     #    Pool     -> (?, 14, 14, 32)
     
-    x_img = tf.cast(x_img, tf.float32)
-    L1 = tf.nn.conv2d(embedded, W1, strides=[1, 1, 1, 1], padding='SAME')
+    #x_img = tf.cast(embedded, tf.float32)
+    L1 = tf.nn.conv2d(embedded_img, W1, strides=[1, 1, 1, 1], padding='SAME')
     L1 = tf.nn.relu(L1)
-    L1 = tf.nn.max_pool(L1, ksize=[1, 2, 2, 1],
-                    strides=[1, 2, 2, 1], padding='SAME')
+    L1 = tf.nn.max_pool(L1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
     L1 = tf.nn.dropout(L1, keep_prob=keep_prob)
     # 두 번째 레이어
-    '''
-    first_layer_weight1 = weight_variable([hidden_layer_size, hidden_layer_size1])
-    first_layer_bias1 = bias_variable([hidden_layer_size1])
-    hidden_layer1 = tf.sigmoid(tf.matmul(hidden_layer0, first_layer_weight1) + first_layer_bias1)
-    #hidden_layer1 = tf.nn.dropout(hidden_layer1,0.8)
-    '''
-    # 아웃 레이어
+    
+    
     W2 = tf.Variable(tf.random_normal([3, 3, 32, 64], stddev=0.01))
     #    Conv      ->(?, 14, 14, 64)
     #    Pool      ->(?, 7, 7, 64)
     L2 = tf.nn.conv2d(L1, W2, strides=[1, 1, 1, 1], padding='SAME')
     L2 = tf.nn.relu(L2)
-    L2 = tf.nn.max_pool(L2, ksize=[1, 2, 2, 1],
-                    strides=[1, 2, 2, 1], padding='SAME')
+    L2 = tf.nn.max_pool(L2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
     L2 = tf.nn.dropout(L2, keep_prob=keep_prob)
     L2_flat = tf.reshape(L2, [-1, 64 * 4 * 4])
-    '''
-    Tensor("Conv2D_1:0", shape=(?, 14, 14, 64), dtype=float32)
-    Tensor("Relu_1:0", shape=(?, 14, 14, 64), dtype=float32)
-    Tensor("MaxPool_1:0", shape=(?, 7, 7, 64), dtype=float32)
-    Tensor("dropout_1/mul:0", shape=(?, 7, 7, 64), dtype=float32)
-    '''
-    '''
-    # L3 ImgIn shape=(?, 7, 7, 64)
-    W3 = tf.Variable(tf.random_normal([3, 3, 64, 128], stddev=0.01))
-    #    Conv      ->(?, 7, 7, 128)
-    #    Pool      ->(?, 4, 4, 128)
-    #    Reshape   ->(?, 4 * 4 * 128) # Flatten them for FC
-    L3 = tf.nn.conv2d(L2, W3, strides=[1, 1, 1, 1], padding='SAME')
-    L3 = tf.nn.relu(L3)
-    L3 = tf.nn.max_pool(L3, ksize=[1, 2, 2, 1], strides=[
-                        1, 2, 2, 1], padding='SAME')
-    L3 = tf.nn.dropout(L3, keep_prob=keep_prob)
-    L3_flat = tf.reshape(L3, [-1, 128 * 4 * 4])
-    '''
-    '''
-    Tensor("Conv2D_2:0", shape=(?, 7, 7, 128), dtype=float32)
-    Tensor("Relu_2:0", shape=(?, 7, 7, 128), dtype=float32)
-    Tensor("MaxPool_2:0", shape=(?, 4, 4, 128), dtype=float32)
-    Tensor("dropout_2/mul:0", shape=(?, 4, 4, 128), dtype=float32)
-    Tensor("Reshape_1:0", shape=(?, 2048), dtype=float32)
-    '''
     
-    # L4 FC 4x4x128 inputs -> 625 outputs
-    W4 = tf.get_variable("W4", shape=[64 * 4 * 4, 625],
-                         initializer=tf.contrib.layers.xavier_initializer())
+    W3=tf.Variable(tf.random_normal([3,3,64,64],stddev=0.01))
+    L3=tf.nn.conv2d(L2,W3,strides=[1,1,1,1],padding='SAME')
+    L3=tf.nn.relu(L3)
+    L3=tf.nn.max_pool(L3,ksize=[1,2,2,1],strides=[1,2,2,1],padding='SAME')
+    L3=tf.nn.dropout(L3,keep_prob=keep_prob)
+    L3_flat=tf.reshape(L3,[-1,64*2*2])
+    
+    # L4 FC 64 * 4 * 4 inputs -> 625 outputs
+    W4 = tf.get_variable("W4", shape=[64 * 2 * 2, 625], initializer=tf.contrib.layers.xavier_initializer())
     b4 = tf.Variable(tf.random_normal([625]))
-    L4 = tf.nn.relu(tf.matmul(L2_flat, W4) + b4)
+    L4 = tf.nn.relu(tf.matmul(L3_flat, W4) + b4)
     L4 = tf.nn.dropout(L4, keep_prob=keep_prob)
     '''
     Tensor("Relu_3:0", shape=(?, 625), dtype=float32)
@@ -231,11 +203,15 @@ if __name__ == '__main__':
     W5 = tf.get_variable("W5", shape=[625, 1],
                      initializer=tf.contrib.layers.xavier_initializer())
     b5 = tf.Variable(tf.random_normal([1]))
-    logits = tf.sigmoid(tf.matmul(L4, W5) + b5) *9 +1
+    logits = tf.matmul(L4, W5) + b5
     
     # loss와 optimizer
     binary_cross_entropy = tf.reduce_mean(tf.square(logits - y_))
     train_step = tf.train.AdamOptimizer(learning_rate).minimize(binary_cross_entropy)
+    
+    # loss와 optimizer
+    cost = tf.reduce_mean(tf.square(logits - y_))
+    train_step = tf.train.AdamOptimizer(learning_rate).minimize(cost)
 
     sess = tf.InteractiveSession()
     tf.global_variables_initializer().run()
@@ -267,11 +243,10 @@ if __name__ == '__main__':
         for epoch in range(config.epochs):
             avg_loss = 0.0
             for i, (data, labels) in enumerate(_batch_loader(dataset, config.batch)):
-                data = MinMaxScaler(data) * 100
+                #data = MinMaxScaler(data) * 100
                 labels = np.reshape(labels,(-1,1))
-                feed_dict={x: data, y_: labels, keep_prob:0.7}
-                
-                _, loss = sess.run([train_step, binary_cross_entropy], feed_dict=feed_dict)
+                feed_dict={x: data, y_: labels, keep_prob:0.9}
+                _, loss = sess.run([train_step, cost], feed_dict=feed_dict)
                 print('Batch : ', i + 1, '/', one_batch_size,
                       ', BCE in this minibatch: ', float(loss))
                 avg_loss += float(loss)
@@ -280,13 +255,8 @@ if __name__ == '__main__':
                         train__loss=float(avg_loss/one_batch_size), step=epoch)
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
-        '''
-        with open(os.path.join(DATASET_PATH, 'train/train_data'), 'rt', encoding='utf-8') as f:
-            reviews = f.readlines()
-        res = nsml.infer(reviews)
-        print(res)
-        tf.reset_default_graph()
-        '''
+            #tf.reset_default_graph()
+    
        
     # 로컬 테스트 모드일때 사용합니다
     # 결과가 아래와 같이 나온다면, nsml submit을 통해서 제출할 수 있습니다.
