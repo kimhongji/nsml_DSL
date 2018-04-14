@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 질문 유사도(희민 rnn) : error(shape of x in RNN Model is rank 3(line 130), but it doesn`t fit with line 202 ( x: data)) 
+
 """
 Copyright 2018 NAVER Corp.
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
@@ -122,40 +122,15 @@ if __name__ == '__main__':
     learning_rate = 0.001
     character_size = 251
 
-    # train Parameters
-    hidden_dim = 10
-    output_dim = 1
-    sequence_length = 7
-    
-    x = tf.placeholder(tf.float32, [None, sequence_length, config.strmaxlen])
+    x = tf.placeholder(tf.int32, [None, config.strmaxlen])
     y_ = tf.placeholder(tf.float32, [None, output_size])
-    '''
+    
     # 임베딩
     char_embedding = tf.get_variable('char_embedding', [character_size, config.embedding])
     embedded = tf.nn.embedding_lookup(char_embedding, x)
     print("============================")
     print(embedded)
-    '''
-    ######################################################
-    # build a LSTM network
-    cell = tf.contrib.rnn.BasicLSTMCell(
-    num_units=hidden_dim, state_is_tuple=True, activation=tf.tanh)
-    outputs, _states = tf.nn.dynamic_rnn(cell, x, time_major=False, dtype=tf.float32)
-    y_pred = tf.contrib.layers.fully_connected(
-    outputs[:, -1], output_dim, activation_fn=None)  # We use the last cell's output
-    
-    # cost/loss
-    binary_cross_entropy = tf.reduce_mean(-(y_ * tf.log(y_pred)) - (1-y_) * tf.log(1-y_pred))
-    train_step = tf.train.AdamOptimizer(learning_rate).minimize(binary_cross_entropy)  # sum of the squares
 
-    '''
-    # RMSE
-    targets = tf.placeholder(tf.float32, [None, 1])
-    predictions = tf.placeholder(tf.float32, [None, 1])
-    rmse = tf.sqrt(tf.reduce_mean(tf.square(targets - predictions)))
-    '''
-    ######################################################
-    '''
     # 첫 번째 레이어
     first_layer_weight0 = weight_variable([input_size, hidden_layer_size])
     first_layer_bias0= bias_variable([hidden_layer_size])
@@ -175,8 +150,7 @@ if __name__ == '__main__':
     # loss와 optimizer
     binary_cross_entropy = tf.reduce_mean(-(y_ * tf.log(output_sigmoid)) - (1-y_) * tf.log(1-output_sigmoid))
     train_step = tf.train.AdamOptimizer(learning_rate).minimize(binary_cross_entropy)
-    '''
-    
+
     sess = tf.InteractiveSession()
     tf.global_variables_initializer().run()
 
@@ -198,7 +172,10 @@ if __name__ == '__main__':
         for epoch in range(config.epochs):
             avg_loss = 0.0
             for i, (data, labels) in enumerate(_batch_loader(dataset, config.batch)):
-                _, loss = sess.run([train_step, binary_cross_entropy],  
+                _, loss = sess.run([train_step, binary_cross_entropy],
+                                   
+                                   
+                                     
                                    feed_dict={x: data, y_: labels})
                 print('Batch : ', i + 1, '/', one_batch_size,
                       ', BCE in this minibatch: ', float(loss))
@@ -208,7 +185,6 @@ if __name__ == '__main__':
                         train__loss=float(avg_loss/one_batch_size), step=epoch)
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
-            
             tf.reset_default_graph()
 
 
