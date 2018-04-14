@@ -18,10 +18,16 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 '''
 4/14
-las: 0.0006
+las: 0.00729(마지막 리더보드)
+**train_loss 는 데이터 차이 정도 실제 정확도 구하는 것과
+는 별개임**
 Minmax : 적당하지 않음 
 4. epoch:250,batch:100 = 0.4(nan error)
-5. epoch:200,batch:1000 = 
+5. epoch:200,batch:1000 = 0.5(nan error)
+6. epch:200, batch:2000, l1,l2:600, data/10 = 0.001
+8. 6+minmax*10 = 0.012 (nan error )
+10.epoc:200,batch:2000,1000-800-500, lr = 0.01 = (nan)
+12.epoc:200,batch:2000,1000-800-500, lr = 0.001 = 0.002(리더보드)
 '''
 
 import argparse
@@ -127,9 +133,9 @@ if __name__ == '__main__':
     # User options
     args.add_argument('--output', type=int, default=1)
     args.add_argument('--epochs', type=int, default=200)
-    args.add_argument('--batch', type=int, default=1000)
+    args.add_argument('--batch', type=int, default=2000)
     args.add_argument('--strmaxlen', type=int, default=400)
-    args.add_argument('--embedding', type=int, default=8)
+    args.add_argument('--embedding', type=int, default=10)
     args.add_argument('--threshold', type=float, default=0.5)
     config = args.parse_args()
 
@@ -139,8 +145,9 @@ if __name__ == '__main__':
     # 모델의 specification
     input_size = config.embedding*config.strmaxlen
     output_size = 1
-    hidden_layer_size = 500
-    hidden_layer_size1 = 500
+    hidden_layer_size0 = 1000
+    hidden_layer_size1 = 800
+    hidden_layer_size2 = 500
     learning_rate = 0.001
     character_size = 251
 
@@ -154,15 +161,22 @@ if __name__ == '__main__':
     print(embedded)
 
     # 첫 번째 레이어
-    first_layer_weight0 = weight_variable([input_size, hidden_layer_size])
-    first_layer_bias0= bias_variable([hidden_layer_size])
+    first_layer_weight0 = weight_variable([input_size, hidden_layer_size0])
+    first_layer_bias0= bias_variable([hidden_layer_size0])
     hidden_layer0 = tf.matmul(tf.reshape(embedded, (-1, input_size)), first_layer_weight0) + first_layer_bias0
-    #hidden_layer0 = tf.nn.dropout(hidden_layer0,0.8)
+    #hidden_layer0 = tf.nn.dropout(hidden_layer0,)
     # 두 번째 레이어
-    first_layer_weight1 = weight_variable([hidden_layer_size, hidden_layer_size1])
+    first_layer_weight1 = weight_variable([hidden_layer_size0, hidden_layer_size1])
     first_layer_bias1 = bias_variable([hidden_layer_size1])
     hidden_layer1 = tf.matmul(hidden_layer0, first_layer_weight1) + first_layer_bias1
     hidden_layer1 = tf.sigmoid(hidden_layer1)
+    #hidden_layer1 = tf.nn.dropout(hidden_layer1,1)
+    
+    first_layer_weight2 = weight_variable([hidden_layer_size1, hidden_layer_size2])
+    first_layer_bias2 = bias_variable([hidden_layer_size2])
+    hidden_layer2 = tf.matmul(hidden_layer1, first_layer_weight2) + first_layer_bias2
+    hidden_layer2 = tf.sigmoid(hidden_layer2)
+    #hidden_layer1 = tf.nn.dropout(hidden_layer1,1)
     # 아웃 레이어
     second_layer_weight = weight_variable([hidden_layer_size1, output_size])
     second_layer_bias = bias_variable([output_size])
@@ -212,7 +226,6 @@ if __name__ == '__main__':
     # 로컬 테스트 모드일때 사용합니다
     # 결과가 아래와 같이 나온다면, nsml submit을 통해서 제출할 수 있습니다.
     # [(0.3, 0), (0.7, 1), ... ]
-    
     elif config.mode == 'test_local':
         with open(os.path.join(DATASET_PATH, 'train/train_data'), 'rt', encoding='utf-8') as f:
             queries = f.readlines()
