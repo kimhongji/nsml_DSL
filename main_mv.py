@@ -81,16 +81,17 @@ def bind_model(sess, config):
         # 저장한 모델에 입력값을 넣고 prediction 결과를 리턴받습니다
         pred1 = []
         for i in range(len(preprocessed_data)):
-            #re_preprocessed_data = np.reshape(preprocessed_data[i,:,],(-1,225))
             pred = sess.run(logits, feed_dict={x: re_preprocessed_data[i:i+1], keep_prob: 1})
             pred1.extend(pred)
         
         point = np.array(pred1)
         point = np.squeeze(point)
         point_arg = np.argmax(point, 1)
+        point_arg=point_arg+1
+        
         # DONOTCHANGE: They are reserved for nsml
         # 리턴 결과는 [(confidence interval, 포인트)] 의 형태로 보내야만 리더보드에 올릴 수 있습니다. 리더보드 결과에 confidence interval의 값은 영향을 미치지 않습니다
-        return list(zip(np.zeros(len(point)), point_arg+1))
+        return list(zip(np.zeros(len(point)), point_arg))
 
     # DONOTCHANGE: They are reserved for nsml
     # nsml에서 지정한 함수에 접근할 수 있도록 하는 함수입니다.
@@ -214,7 +215,7 @@ if __name__ == '__main__':
     
     # loss와 optimizer
     cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
-    logits=logits, labels=Y_one_hot))
+                                        logits=logits, labels=Y_one_hot))
     train_step = tf.train.AdamOptimizer(learning_rate).minimize(cost)
 
 
@@ -252,13 +253,13 @@ if __name__ == '__main__':
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
             
-        '''
+        
         with open(os.path.join(DATASET_PATH, 'train/train_data'), 'rt', encoding='utf-8') as f:
             reviews = f.readlines()
         res = nsml.infer(reviews)
         print(res)
         tf.reset_default_graph()
-        '''
+        
     
        
     # 로컬 테스트 모드일때 사용합니다

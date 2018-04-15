@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+# 질문 유사도(희민 rnn) : error(shape of x in RNN Model is rank 3(line 130), but it doesn`t fit with line 202 ( x: data)) 
 """
 Copyright 2018 NAVER Corp.
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
@@ -17,17 +17,9 @@ CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFT
 OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 '''
-4/14
-las: 0.00729(마지막 리더보드)
-**train_loss 는 데이터 차이 정도 실제 정확도 구하는 것과
-는 별개임**
-Minmax : 적당하지 않음 
-4. epoch:250,batch:100 = 0.4(nan error)
-5. epoch:200,batch:1000 = 0.5(nan error)
-6. epch:200, batch:2000, l1,l2:600, data/10 = 0.001
-8. 6+minmax*10 = 0.012 (nan error )
-10.epoc:200,batch:2000,1000-800-500, lr = 0.01 = (nan)
-12.epoc:200,batch:2000,1000-800-500, lr = 0.001 = 0.002(리더보드)
+4/15
+17. rnn 적용
+18.epoch, hidden dim, 조절 
 '''
 
 import argparse
@@ -40,23 +32,7 @@ import nsml
 from nsml import DATASET_PATH, HAS_DATASET, IS_ON_NSML
 from dataset import KinQueryDataset, preprocess
 
-def MinMaxScaler(data):
-    numerator = data - np.min(data, 0)
-    denominator = np.max(data, 0) - np.min(data, 0)
-    return numerator / (denominator + 1e-7)
 
-def feature_normalization(data):
-    # parameter 
-    feature_num = data.shape[1]
-    data_point = data.shape[0]
-    # you should get this parameter correctly
-    nomal_feature = np.zeros([data_point,feature_num])
-    ## your code here
-    mu=np.mean(data,0)
-    std=np.std(data,0)
-    nomal_feature=(data-mu)/std
-    ## end
-    return nomal_feature
 # DONOTCHANGE: They are reserved for nsml
 # This is for nsml leaderboard
 def bind_model(sess, config):
@@ -87,10 +63,9 @@ def bind_model(sess, config):
         """
         # dataset.py에서 작성한 preprocess 함수를 호출하여, 문자열을 벡터로 변환합니다
         preprocessed_data = preprocess(raw_data, config.strmaxlen)
-        #preprocessed_data = feature_normalization(preprocessed_data)
-        #preprocessed_data = MinMaxScaler(preprocessed_data)* 10
+        preprocessed_data = np.reshape(preprocessed_data,(-1,sequence_length,400))
         # 저장한 모델에 입력값을 넣고 prediction 결과를 리턴받습니다
-        pred = sess.run(output_sigmoid, feed_dict={x: preprocessed_data})
+        pred = sess.run(y_pred, feed_dict={x: preprocessed_data})
         clipped = np.array(pred > config.threshold, dtype=np.int)
         # DONOTCHANGE: They are reserved for nsml
         # 리턴 결과는 [(확률, 0 or 1)] 의 형태로 보내야만 리더보드에 올릴 수 있습니다. 리더보드 결과에 확률의 값은 영향을 미치지 않습니다
@@ -132,10 +107,10 @@ if __name__ == '__main__':
 
     # User options
     args.add_argument('--output', type=int, default=1)
-    args.add_argument('--epochs', type=int, default=200)
-    args.add_argument('--batch', type=int, default=2000)
+    args.add_argument('--epochs', type=int, default=1500)
+    args.add_argument('--batch', type=int, default=1000)
     args.add_argument('--strmaxlen', type=int, default=400)
-    args.add_argument('--embedding', type=int, default=10)
+    args.add_argument('--embedding', type=int, default=8)
     args.add_argument('--threshold', type=float, default=0.5)
     config = args.parse_args()
 
@@ -145,48 +120,65 @@ if __name__ == '__main__':
     # 모델의 specification
     input_size = config.embedding*config.strmaxlen
     output_size = 1
-    hidden_layer_size0 = 1000
-    hidden_layer_size1 = 800
-    hidden_layer_size2 = 500
-    learning_rate = 0.001
+    hidden_layer_size = 500
+    hidden_layer_size1 = 500
+    learning_rate = 0.01
     character_size = 251
 
-    x = tf.placeholder(tf.int32, [None, config.strmaxlen])
-    y_ = tf.placeholder(tf.float32, [None, output_size])
+    # train Parameters
+    hidden_dim = 20
+    output_dim = 1
+    sequence_length = 1
     
+    x = tf.placeholder(tf.float32, [None, sequence_length, config.strmaxlen])
+    y_ = tf.placeholder(tf.float32, [None, output_size])
+    '''
     # 임베딩
     char_embedding = tf.get_variable('char_embedding', [character_size, config.embedding])
     embedded = tf.nn.embedding_lookup(char_embedding, x)
     print("============================")
     print(embedded)
+    '''
+    ######################################################
+    # build a LSTM network
+    cell = tf.contrib.rnn.BasicLSTMCell(
+    num_units=hidden_dim, state_is_tuple=True, activation=tf.tanh)
+    outputs, _states = tf.nn.dynamic_rnn(cell, x, time_major=False, dtype=tf.float32)
+    y_pred = tf.contrib.layers.fully_connected(
+    outputs[:, -1], output_dim, activation_fn=tf.sigmoid)  # We use the last cell's output
+    #y_pred = tf.sigmoid(y_pred)
+    # cost/loss
+    binary_cross_entropy = tf.reduce_mean(-(y_ * tf.log(y_pred)) - (1-y_) * tf.log(1-y_pred))
+    train_step = tf.train.AdamOptimizer(learning_rate).minimize(binary_cross_entropy)  # sum of the squares
 
+    '''
+    # RMSE
+    targets = tf.placeholder(tf.float32, [None, 1])
+    predictions = tf.placeholder(tf.float32, [None, 1])
+    rmse = tf.sqrt(tf.reduce_mean(tf.square(targets - predictions)))
+    '''
+    ######################################################
+    '''
     # 첫 번째 레이어
-    first_layer_weight0 = weight_variable([input_size, hidden_layer_size0])
-    first_layer_bias0= bias_variable([hidden_layer_size0])
+    first_layer_weight0 = weight_variable([input_size, hidden_layer_size])
+    first_layer_bias0= bias_variable([hidden_layer_size])
     hidden_layer0 = tf.matmul(tf.reshape(embedded, (-1, input_size)), first_layer_weight0) + first_layer_bias0
-    #hidden_layer0 = tf.nn.dropout(hidden_layer0,)
+    #hidden_layer0 = tf.nn.dropout(hidden_layer0,0.8)
     # 두 번째 레이어
-    first_layer_weight1 = weight_variable([hidden_layer_size0, hidden_layer_size1])
+    first_layer_weight1 = weight_variable([hidden_layer_size, hidden_layer_size1])
     first_layer_bias1 = bias_variable([hidden_layer_size1])
-    hidden_layer1 = tf.matmul(hidden_layer0, first_layer_weight1) + first_layer_bias1
-    hidden_layer1 = tf.sigmoid(hidden_layer1)
-    #hidden_layer1 = tf.nn.dropout(hidden_layer1,1)
-    
-    first_layer_weight2 = weight_variable([hidden_layer_size1, hidden_layer_size2])
-    first_layer_bias2 = bias_variable([hidden_layer_size2])
-    hidden_layer2 = tf.matmul(hidden_layer1, first_layer_weight2) + first_layer_bias2
-    hidden_layer2 = tf.sigmoid(hidden_layer2)
-    #hidden_layer1 = tf.nn.dropout(hidden_layer1,1)
+    hidden_layer1 = tf.sigmoid(tf.matmul(hidden_layer0, first_layer_weight1) + first_layer_bias1)
+    #hidden_layer1 = tf.nn.dropout(hidden_layer1,0.8)
     # 아웃 레이어
     second_layer_weight = weight_variable([hidden_layer_size1, output_size])
     second_layer_bias = bias_variable([output_size])
     output = tf.matmul(hidden_layer1, second_layer_weight) + second_layer_bias
     output_sigmoid = tf.sigmoid(output)
-
     # loss와 optimizer
     binary_cross_entropy = tf.reduce_mean(-(y_ * tf.log(output_sigmoid)) - (1-y_) * tf.log(1-output_sigmoid))
     train_step = tf.train.AdamOptimizer(learning_rate).minimize(binary_cross_entropy)
-
+    '''
+    
     sess = tf.InteractiveSession()
     tf.global_variables_initializer().run()
 
@@ -208,9 +200,8 @@ if __name__ == '__main__':
         for epoch in range(config.epochs):
             avg_loss = 0.0
             for i, (data, labels) in enumerate(_batch_loader(dataset, config.batch)):
-                #data = feature_normalization(data)
-                #data = MinMaxScaler(data) * 10
-                _, loss = sess.run([train_step, binary_cross_entropy],
+                data = np.reshape(data,(-1,sequence_length,400))
+                _, loss = sess.run([train_step, binary_cross_entropy],  
                                    feed_dict={x: data, y_: labels})
                 print('Batch : ', i + 1, '/', one_batch_size,
                       ', BCE in this minibatch: ', float(loss))
@@ -220,12 +211,22 @@ if __name__ == '__main__':
                         train__loss=float(avg_loss/one_batch_size), step=epoch)
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
-            #tf.reset_default_graph()
+        '''
+        with open(os.path.join(DATASET_PATH, 'train/train_data'), 'rt', encoding='utf-8') as f:
+             queries = f.readlines()
+             res = []
+        for batch in _batch_loader(queries, config.batch):
+            temp_res = nsml.infer(batch)
+            res += temp_res
+        print(res)
+        '''
+        #tf.reset_default_graph()
 
 
     # 로컬 테스트 모드일때 사용합니다
     # 결과가 아래와 같이 나온다면, nsml submit을 통해서 제출할 수 있습니다.
     # [(0.3, 0), (0.7, 1), ... ]
+    
     elif config.mode == 'test_local':
         with open(os.path.join(DATASET_PATH, 'train/train_data'), 'rt', encoding='utf-8') as f:
             queries = f.readlines()
