@@ -19,7 +19,6 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 '''
 4/12
 22. cnn 으로 실행, embedding 넣고 10 으로 수정 하고 
-
 31.minmax + embedding 10 = 8.252
 32.minmax + embedding 10 + epoch20 = 7.675
 35.embedding 10 + epoch20 = 6.976
@@ -28,8 +27,6 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 42.y_ 625 = 6.23
 43.cnn W3 추가 = 6.333
 44.keep_prob = 0.7 + y_300 = (train)7.298
-52.epoch60,batch1000,embedd8,max_pool(stride 1,1,1,1) = 6.43
-60.softmax,추가 = train 0.9 근데 리더보드엔 안올라감 왜? 
 '''
 import argparse
 import os
@@ -40,6 +37,12 @@ import tensorflow as tf
 import nsml
 from dataset import MovieReviewDataset, preprocess
 from nsml import DATASET_PATH, HAS_DATASET, GPU_NUM, IS_ON_NSML
+
+def StandardSclaer(data):
+    mu=np.mean(data)
+    std=np.std(data)
+    X=(data-mu)/std
+    return X
 
 def MinMaxScaler(data):
     numerator = data - np.min(data, 0)
@@ -70,28 +73,25 @@ def bind_model(sess, config):
 
     def infer(raw_data, **kwargs):
         """
-
         :param raw_data: raw input (여기서는 문자열)을 입력받습니다
         :param kwargs:
         :return:
         """
         # dataset.py에서 작성한 preprocess 함수를 호출하여, 문자열을 벡터로 변환합니다
         preprocessed_data = preprocess(raw_data, config.strmaxlen)
-        re_preprocessed_data = np.reshape(preprocessed_data,(-1,225))
+        #preprocessed_data = StandardSclaer(preprocessed_data)*10
         # 저장한 모델에 입력값을 넣고 prediction 결과를 리턴받습니다
         pred1 = []
         for i in range(len(preprocessed_data)):
-            pred = sess.run(logits, feed_dict={x: re_preprocessed_data[i:i+1], keep_prob: 1})
+            re_preprocessed_data = np.reshape(preprocessed_data[i,:,],(-1,225))
+            pred = sess.run(logits, feed_dict={x: re_preprocessed_data, keep_prob: 1})
             pred1.extend(pred)
         
         point = np.array(pred1)
         point = np.squeeze(point)
-        point_arg = np.argmax(point, 1)
-        point_arg=point_arg+1
-        
         # DONOTCHANGE: They are reserved for nsml
         # 리턴 결과는 [(confidence interval, 포인트)] 의 형태로 보내야만 리더보드에 올릴 수 있습니다. 리더보드 결과에 confidence interval의 값은 영향을 미치지 않습니다
-        return list(zip(np.zeros(len(point)), point_arg))
+        return list(zip(np.zeros(len(point)), point))
 
     # DONOTCHANGE: They are reserved for nsml
     # nsml에서 지정한 함수에 접근할 수 있도록 하는 함수입니다.
@@ -100,7 +100,6 @@ def bind_model(sess, config):
 def _batch_loader(iterable, n=1):
     """
     데이터를 배치 사이즈만큼 잘라서 보내주는 함수입니다. PyTorch의 DataLoader와 같은 역할을 합니다
-
     :param iterable: 데이터 list, 혹은 다른 포맷
     :param n: 배치 사이즈
     :return:
@@ -127,11 +126,11 @@ if __name__ == '__main__':
 
     # User options
     args.add_argument('--output', type=int, default=1)
-    args.add_argument('--epochs', type=int, default=20)
-    args.add_argument('--batch', type=int, default=1000)
-    args.add_argument('--strmaxlen', type=int, default=225) #한문장의 길이
-    args.add_argument('--embedding', type=int, default=8)
-    args.add_argument('--img_input', type=int, default=15)  #x_img 의 input변수(한문장의길이의 루트)
+    args.add_argument('--epochs', type=int, default=30)
+    args.add_argument('--batch', type=int, default=2000)
+    args.add_argument('--strmaxlen', type=int, default=400) #한문장의 길이
+    args.add_argument('--embedding', type=int, default=10)
+    args.add_argument('--img_input', type=int, default=20)  #x_img 의 input변수(한문장의길이의 루트)
 
     config = args.parse_args()
 
@@ -146,20 +145,14 @@ if __name__ == '__main__':
     output_layer = 625
     learning_rate = 0.001
     character_size = 251
-    nb_classes = 10 #1~10
+    
     # dropout (keep_prob) rate  0.7~0.5 on training, but should be 1 for testing
     keep_prob = tf.placeholder(tf.float32)
     
     x = tf.placeholder(tf.int32, [None, config.strmaxlen])    #107 * 225
     x_img = tf.reshape(x, [-1,config.img_input,config.img_input])
     x_img = tf.cast(x_img, tf.int32)
-    
-    y_ = tf.placeholder(tf.int32, [None, output_size])
-    Y_one_hot = tf.one_hot(y_, nb_classes)  # one hot
-    #print("one_hot", Y_one_hot)
-    Y_one_hot = tf.reshape(Y_one_hot, [-1, nb_classes])
-    #print("reshape", Y_one_hot)
-    Y_one_hot = tf.cast(Y_one_hot, tf.float32)
+    y_ = tf.placeholder(tf.float32, [None, output_size])
     # 임베딩
     
     char_embedding = tf.get_variable('char_embedding', [character_size, config.embedding])
@@ -175,7 +168,7 @@ if __name__ == '__main__':
     #    Pool     -> (?, 14, 14, 32)
     L1 = tf.nn.conv2d(embedded_img, W1, strides=[1, 1, 1, 1], padding='SAME')
     L1 = tf.nn.relu(L1)
-    L1 = tf.nn.max_pool(L1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+    L1 = tf.nn.max_pool(L1, ksize=[1, 2, 2, 1], strides=[1, 1, 1, 1], padding='SAME')
     L1 = tf.nn.dropout(L1, keep_prob=keep_prob)
     # 두 번째 레이어
 
@@ -187,15 +180,15 @@ if __name__ == '__main__':
     L2 = tf.nn.max_pool(L2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
     L2 = tf.nn.dropout(L2, keep_prob=keep_prob)
     
-    W3=tf.Variable(tf.random_normal([3,3,64,64],stddev=0.01))
+    W3=tf.Variable(tf.random_normal([3,3,64,128],stddev=0.01))
     L3=tf.nn.conv2d(L2,W3,strides=[1,1,1,1],padding='SAME')
     L3=tf.nn.relu(L3)
-    L3=tf.nn.max_pool(L3,ksize=[1,2,2,1],strides=[1,2,2,1],padding='SAME')
+    L3=tf.nn.max_pool(L3,ksize=[1,2,2,1],strides=[1,1,1,1],padding='SAME')
     L3=tf.nn.dropout(L3,keep_prob=keep_prob)
-    L3_flat=tf.reshape(L3,[-1,64*2*2])
+    L3_flat=tf.reshape(L3,[-1,128*10*10])
     
     # L4 FC 64 * 4 * 4 inputs -> 625 outputs
-    W4 = tf.get_variable("W4", shape=[64 * 2 * 2, output_layer],
+    W4 = tf.get_variable("W4", shape=[128*10*10, output_layer],
                          initializer=tf.contrib.layers.xavier_initializer())
     b4 = tf.Variable(tf.random_normal([output_layer]))
     L4 = tf.nn.relu(tf.matmul(L3_flat, W4) + b4)
@@ -205,19 +198,17 @@ if __name__ == '__main__':
     Tensor("dropout_3/mul:0", shape=(?, 625), dtype=float32)
     '''
     # L5 Final FC 625 inputs -> 10 outputs
-    W5 = tf.get_variable("W5", shape=[output_layer, nb_classes],
+    W5 = tf.get_variable("W5", shape=[output_layer, 1],
                      initializer=tf.contrib.layers.xavier_initializer())
-    b5 = tf.Variable(tf.random_normal([nb_classes]))
+    b5 = tf.Variable(tf.random_normal([1]))
     logits = tf.matmul(L4, W5) + b5
-    logits = tf.nn.softmax(logits)
-    #logits = tf.nn.softmax(tf.matmul(L4, W5)+b5)
-
+    # loss와 optimizer
+    binary_cross_entropy = tf.reduce_mean(tf.square(logits - y_))
+    train_step = tf.train.AdamOptimizer(learning_rate).minimize(binary_cross_entropy)
     
     # loss와 optimizer
-    cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
-                                        logits=logits, labels=Y_one_hot))
+    cost = tf.reduce_mean(tf.square(logits - y_))
     train_step = tf.train.AdamOptimizer(learning_rate).minimize(cost)
-
 
     sess = tf.InteractiveSession()
     tf.global_variables_initializer().run()
@@ -240,26 +231,45 @@ if __name__ == '__main__':
         for epoch in range(config.epochs):
             avg_loss = 0.0
             for i, (data, labels) in enumerate(_batch_loader(dataset, config.batch)):
-                #data = MinMaxScaler(data) * 100
+                #data = StandardSclaer(data)*10
+                
+                row_list =[]
+                col_list=[]
+                pre_j = 0
+                for i in range(len(data)):
+                    for j in range(config.strmaxlen):
+                        if data[i][j] == 99:
+                            
+                            row_list.append(data[i][pre_j:j].copy())
+                            pre_j = j+1
+                        elif data[i][j] == 77:
+                            row_list.append(data[i][pre_j:j].copy())
+                            pre_j = 0
+                            break
+                    col_list.append(row_list.copy())
+                    del row_list[:]
+                    
+                data_array= np.zeros([107,20,20])
+                for i in range(len(data)):
+                    for j in range(np.size(col_list[i])):
+                        for k in range(np.size(col_list[i][j])):
+                           data_array[i][j][k]=col_list[i][j][k]
+                data_array = np.reshape(data_array,(-1,400))        
                 labels = np.reshape(labels,(-1,1))
-                feed_dict={x: data, y_: labels, keep_prob:0.7}
+                #col_list= np.asarray(col_list[0], dtype=np.float32)
+                feed_dict={x: data_array, y_: labels, keep_prob:0.7}
                 _, loss = sess.run([train_step, cost], feed_dict=feed_dict)
+                #del row_list[:]
+                #del col_list[:]
                 print('Batch : ', i + 1, '/', one_batch_size,
-                      ', BCE in this minibatch: ', loss.astype(float))
-                avg_loss += loss.astype(float)
-            print('epoch:', epoch, ' train_loss:', (avg_loss/one_batch_size).astype(float))
+                      ', BCE in this minibatch: ', float(loss))
+                avg_loss += float(loss)
+            print('epoch:', epoch, ' train_loss:', float(avg_loss/one_batch_size))
             nsml.report(summary=True, scope=locals(), epoch=epoch, epoch_total=config.epochs,
-                        train__loss=(avg_loss/one_batch_size).astype(float), step=epoch)
+                        train__loss=float(avg_loss/one_batch_size), step=epoch)
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
-            
-        
-        with open(os.path.join(DATASET_PATH, 'train/train_data'), 'rt', encoding='utf-8') as f:
-            reviews = f.readlines()
-        res = nsml.infer(reviews)
-        print(res)
-        tf.reset_default_graph()
-        
+            tf.reset_default_graph()
     
        
     # 로컬 테스트 모드일때 사용합니다
@@ -269,7 +279,3 @@ if __name__ == '__main__':
         with open(os.path.join(DATASET_PATH, 'train/train_data'), 'rt', encoding='utf-8') as f:
             reviews = f.readlines()
         res = nsml.infer(reviews)
-        print(res)
-        
-
-        
